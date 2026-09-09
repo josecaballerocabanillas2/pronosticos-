@@ -9,7 +9,7 @@ import dateutil.parser
 st.set_page_config(page_title="Escáner Máxima Certeza (Hora Portugal)", page_icon="⚽", layout="wide")
 
 st.title("⚽ Escáner de Pronósticos Máxima Certeza")
-st.caption("Con columnas dedicadas para Ambos Marcan, Córneres Estimados y Pronósticos Principales (Hora de Portugal).")
+st.caption("Ordenado cronológicamente por horarios de Portugal. Incluye Ambos Marcan, Córneres y 3 Pronósticos de Alta Probabilidad.")
 
 # ---------------------------------------------------------
 # MOTOR DE PROBABILIDADES
@@ -56,7 +56,7 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                 matches_data = res.json()
                 results = []
                 
-                # Horario Portugal (UTC+1 / WET con cambio de hora estándar)
+                # Horario Portugal
                 portugal_tz = timezone(timedelta(hours=1))
                 
                 for m in matches_data:
@@ -69,8 +69,10 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                         dt_utc = dateutil.parser.isoparse(commence_time_raw)
                         dt_portugal = dt_utc.astimezone(portugal_tz)
                         match_time = dt_portugal.strftime("%H:%M (%d/%m)")
+                        sort_time = dt_portugal
                     else:
                         match_time = "Por definir"
+                        sort_time = datetime.max.replace(tzinfo=portugal_tz)
 
                     b_makers = m.get('bookmakers', [])
                     if not b_makers:
@@ -110,14 +112,15 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                     p_under_3_5 = float(np.sum(matrix[total_goals_matrix < 3.5]))
                     p_under_4_5 = float(np.sum(matrix[total_goals_matrix < 4.5]))
                     
-                    # 4. Estimación de Córneres
+                    # 4. Estimación de Córneres Totales
                     exp_corners = round((h_xg_est * 3.8) + (a_xg_est * 3.5) + 3.2, 1)
                     
-                    # 5. Primer y Segundo Tiempo
+                    # 5. Primer Tiempo (1T)
                     p_h_ht = float(np.sum(np.tril(matrix_ht, -1)))
                     p_d_ht = float(np.sum(np.diag(matrix_ht)))
                     p_a_ht = float(np.sum(np.triu(matrix_ht, 1)))
                     
+                    # 6. Segundo Tiempo (2T)
                     p_h_2t = float(np.sum(np.tril(matrix_2t, -1)))
                     p_d_2t = float(np.sum(np.diag(matrix_2t)))
                     p_a_2t = float(np.sum(np.triu(matrix_2t, 1)))
@@ -140,33 +143,33 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                         ("Gana " + away_p + " (2ª Parte)", p_a_2t, round(1/p_a_2t, 2) if p_a_2t > 0 else 1.0),
                     ]
                     
-                    # Ordenar selecciones por probabilidad
+                    # Ordenar selecciones de mayor a menor probabilidad
                     sorted_candidates = sorted(candidates, key=lambda x: x[1], reverse=True)
                     top_pick = sorted_candidates[0]
                     second_pick = sorted_candidates[1]
+                    third_pick = sorted_candidates[2]
 
-                    # Determinar favorito en Ambos Marcan
-                    if p_btts_yes >= p_btts_no:
-                        btts_text = f"<b>SÍ</b> ({p_btts_yes*100:.1f}%)"
-                    else:
-                        btts_text = f"<b>NO</b> ({p_btts_no*100:.1f}%)"
+                    # Formato Ambos Marcan
+                    btts_detail = f"<b>SÍ:</b> {p_btts_yes*100:.1f}%<br><b>NO:</b> {p_btts_no*100:.1f}%"
                     
                     results.append({
                         "Horario (PT)": f"🇵🇹 <b>{match_time}</b>",
                         "Partido": f"<b>{home_p} vs {away_p}</b>",
-                        "Ambos Marcan": btts_text,
+                        "Ambos Marcan": btts_detail,
                         "Córneres Est.": f"🚩 <b>{exp_corners}</b>",
                         "Pronóstico #1 Máxima Certeza": f"🔥 <b>{top_pick[0]}</b><br>• Probabilidad: <b>{top_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{top_pick[2]:.2f}</b>",
                         "Pronóstico #2 Alternativa": f"🟢 <b>{second_pick[0]}</b><br>• Probabilidad: <b>{second_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{second_pick[2]:.2f}</b>",
-                        "max_prob": top_pick[1]
+                        "Pronóstico #3 Opción": f"🔵 <b>{third_pick[0]}</b><br>• Probabilidad: <b>{third_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{third_pick[2]:.2f}</b>",
+                        "sort_time": sort_time
                     })
                 
-                results_sorted = sorted(results, key=lambda x: x["max_prob"], reverse=True)
+                # Ordenar la lista completa cronológicamente por la hora del partido
+                results_sorted = sorted(results, key=lambda x: x["sort_time"])
                 for item in results_sorted:
-                    del item["max_prob"]
+                    del item["sort_time"]
                 
                 df = pd.DataFrame(results_sorted)
-                st.markdown("### 📊 Partidos Ordenados por Índice de Certeza Global")
+                st.markdown("### 📊 Partidos Ordenados por Horario (Portugal)")
                 st.write(df.to_html(escape=False), unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Error procesando datos: {e}")
