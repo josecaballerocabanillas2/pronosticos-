@@ -3,11 +3,13 @@ import numpy as np
 import scipy.stats as stats
 import pandas as pd
 import requests
+from datetime import datetime
+import dateutil.parser
 
-st.set_page_config(page_title="Escáner Completo de Pronósticos", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Escáner Completo de Pronósticos con Horarios", page_icon="⚽", layout="wide")
 
-st.title("⚽ Escáner de Pronósticos Extendido")
-st.caption("Incluye Ambos Marcan, Resultado Final (1X2), Primer Tiempo (1T) y Segundo Tiempo (2T).")
+st.title("⚽ Escáner de Pronósticos Extendido con Horarios")
+st.caption("Incluye horarios de inicio, Ambos Marcan, Resultado Final (1X2), Primer Tiempo (1T) y Segundo Tiempo (2T).")
 
 # ---------------------------------------------------------
 # MOTOR DE PROBABILIDADES
@@ -58,6 +60,14 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                     home_p = m.get('home_team', 'Local')
                     away_p = m.get('away_team', 'Visitante')
                     
+                    # Formatear Horario
+                    commence_time_raw = m.get('commence_time', '')
+                    if commence_time_raw:
+                        dt = dateutil.parser.isoparse(commence_time_raw).astimezone()
+                        match_time = dt.strftime("%H:%M (%d/%m)")
+                    else:
+                        match_time = "Por definir"
+
                     b_makers = m.get('bookmakers', [])
                     if not b_makers:
                         continue
@@ -122,6 +132,7 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                     third_pick = sorted_candidates[2]
                     
                     results.append({
+                        "Horario": f"⏰ <b>{match_time}</b>",
                         "Partido": f"<b>{home_p} vs {away_p}</b>",
                         "Pronóstico #1 Máxima Certeza": f"🔥 <b>{top_pick[0]}</b><br>• Probabilidad: <b>{top_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{top_pick[2]:.2f}</b>",
                         "Pronóstico #2 Alternativa": f"🟢 <b>{second_pick[0]}</b><br>• Probabilidad: <b>{second_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{second_pick[2]:.2f}</b>",
