@@ -4,10 +4,10 @@ import scipy.stats as stats
 import pandas as pd
 import requests
 
-st.set_page_config(page_title="Top Pronósticos de Alta Certeza", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Escáner Completo de Pronósticos", page_icon="⚽", layout="wide")
 
-st.title("⚽ Escáner de Pronósticos Máxima Certeza")
-st.caption("Filtra y muestra la jugada con mayor probabilidad matemática de ocurrir por partido.")
+st.title("⚽ Escáner de Pronósticos Extendido")
+st.caption("Incluye Ambos Marcan, Resultado Final (1X2), Primer Tiempo (1T) y Segundo Tiempo (2T).")
 
 # ---------------------------------------------------------
 # MOTOR DE PROBABILIDADES
@@ -73,46 +73,59 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                     h_xg_est = round(max(0.8, h_implied * 2.7), 2)
                     a_xg_est = round(max(0.8, a_implied * 2.7), 2)
                     
+                    # Matriz Partido Completo
                     matrix = dixon_coles_prob(h_xg_est, a_xg_est)
                     
+                    # Matriz 1ª Parte (~45% del xG total)
+                    matrix_ht = dixon_coles_prob(h_xg_est * 0.45, a_xg_est * 0.45)
+                    
+                    # Matriz 2ª Parte (~55% del xG total)
+                    matrix_2t = dixon_coles_prob(h_xg_est * 0.55, a_xg_est * 0.55)
+                    
+                    # 1. Ganador Final (1X2)
                     p_h = float(np.sum(np.tril(matrix, -1)))
                     p_d = float(np.sum(np.diag(matrix)))
                     p_a = float(np.sum(np.triu(matrix, 1)))
                     
-                    p_1x = p_h + p_d
-                    p_x2 = p_a + p_d
+                    # 2. Ambos Marcan (BTTS)
+                    p_btts_yes = float(np.sum(matrix[1:, 1:]))
+                    p_btts_no = 1.0 - p_btts_yes
                     
-                    total_goals_matrix = np.fromfunction(lambda i, j: i + j, matrix.shape)
-                    p_over_0_5 = float(np.sum(matrix[total_goals_matrix > 0.5]))
-                    p_over_1_5 = float(np.sum(matrix[total_goals_matrix > 1.5]))
-                    p_under_3_5 = float(np.sum(matrix[total_goals_matrix < 3.5]))
-                    p_under_4_5 = float(np.sum(matrix[total_goals_matrix < 4.5]))
+                    # 3. Primer Tiempo (1T)
+                    p_h_ht = float(np.sum(np.tril(matrix_ht, -1)))
+                    p_d_ht = float(np.sum(np.diag(matrix_ht)))
+                    p_a_ht = float(np.sum(np.triu(matrix_ht, 1)))
                     
-                    exp_corners = round((h_xg_est * 3.8) + (a_xg_est * 3.5) + 3.2, 1)
-                    p_corners_7_5 = min(0.98, round(0.50 + (exp_corners - 7.5) * 0.08, 2))
+                    # 4. Segundo Tiempo (2T)
+                    p_h_2t = float(np.sum(np.tril(matrix_2t, -1)))
+                    p_d_2t = float(np.sum(np.diag(matrix_2t)))
+                    p_a_2t = float(np.sum(np.triu(matrix_2t, 1)))
 
-                    # Evaluación de opciones
                     candidates = [
-                        ("Gana " + home_p, p_h, o_h),
-                        ("Gana " + away_p, p_a, o_a),
-                        ("Doble Oportunidad 1X (" + home_p + " o Empate)", p_1x, round(1/p_1x, 2) if p_1x > 0 else 1.0),
-                        ("Doble Oportunidad X2 (" + away_p + " o Empate)", p_x2, round(1/p_x2, 2) if p_x2 > 0 else 1.0),
-                        ("Más de 0.5 Goles Totales", p_over_0_5, round(1/p_over_0_5, 2) if p_over_0_5 > 0 else 1.0),
-                        ("Más de 1.5 Goles Totales", p_over_1_5, round(1/p_over_1_5, 2) if p_over_1_5 > 0 else 1.0),
-                        ("Menos de 3.5 Goles Totales", p_under_3_5, round(1/p_under_3_5, 2) if p_under_3_5 > 0 else 1.0),
-                        ("Menos de 4.5 Goles Totales", p_under_4_5, round(1/p_under_4_5, 2) if p_under_4_5 > 0 else 1.0),
-                        ("Más de 7.5 Córneres", p_corners_7_5, 1.22)
+                        ("Gana " + home_p + " (Partido Completo)", p_h, o_h),
+                        ("Empate (Partido Completo)", p_d, o_d),
+                        ("Gana " + away_p + " (Partido Completo)", p_a, o_a),
+                        ("Ambos Marcan: SÍ", p_btts_yes, round(1/p_btts_yes, 2) if p_btts_yes > 0 else 1.0),
+                        ("Ambos Marcan: NO", p_btts_no, round(1/p_btts_no, 2) if p_btts_no > 0 else 1.0),
+                        ("Gana " + home_p + " (1ª Parte)", p_h_ht, round(1/p_h_ht, 2) if p_h_ht > 0 else 1.0),
+                        ("Empate (1ª Parte)", p_d_ht, round(1/p_d_ht, 2) if p_d_ht > 0 else 1.0),
+                        ("Gana " + away_p + " (1ª Parte)", p_a_ht, round(1/p_a_ht, 2) if p_a_ht > 0 else 1.0),
+                        ("Gana " + home_p + " (2ª Parte)", p_h_2t, round(1/p_h_2t, 2) if p_h_2t > 0 else 1.0),
+                        ("Empate (2ª Parte)", p_d_2t, round(1/p_d_2t, 2) if p_d_2t > 0 else 1.0),
+                        ("Gana " + away_p + " (2ª Parte)", p_a_2t, round(1/p_a_2t, 2) if p_a_2t > 0 else 1.0),
                     ]
                     
                     # Ordenar por probabilidad descendente
                     sorted_candidates = sorted(candidates, key=lambda x: x[1], reverse=True)
                     top_pick = sorted_candidates[0]
                     second_pick = sorted_candidates[1]
+                    third_pick = sorted_candidates[2]
                     
                     results.append({
                         "Partido": f"<b>{home_p} vs {away_p}</b>",
                         "Pronóstico #1 Máxima Certeza": f"🔥 <b>{top_pick[0]}</b><br>• Probabilidad: <b>{top_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{top_pick[2]:.2f}</b>",
-                        "Pronóstico #2 Alternativa": f"🟢 <b>{second_pick[0]}</b><br>• Probabilidad: <b>{second_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{second_pick[2]:.2f}</b>"
+                        "Pronóstico #2 Alternativa": f"🟢 <b>{second_pick[0]}</b><br>• Probabilidad: <b>{second_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{second_pick[2]:.2f}</b>",
+                        "Pronóstico #3 Opción": f"🔵 <b>{third_pick[0]}</b><br>• Probabilidad: <b>{third_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{third_pick[2]:.2f}</b>"
                     })
                     
                 df = pd.DataFrame(results)
