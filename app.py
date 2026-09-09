@@ -8,10 +8,10 @@ from datetime import datetime
 st.set_page_config(page_title="AI Football Predictor PRO", page_icon="⚽", layout="wide")
 
 st.title("⚽ AI Football Predictor & Multi-Market Scanner")
-st.caption("Análisis Estadístico Avanzado con Horarios, Mercados Principales y Secundarios")
+st.caption("Análisis Estadístico Avanzado: Ganador, Goles, Córneres y Ambos Marcan (Calibrado)")
 
 # ---------------------------------------------------------
-# MOTOR DE PROBABILIDADES EXTENDIDO
+# MOTOR DE PROBABILIDADES CALIBRADO
 # ---------------------------------------------------------
 def dixon_coles_prob(home_xg, away_xg, rho=-0.13, max_g=8):
     """Calcula la matriz estocástica de marcadores posibles"""
@@ -43,16 +43,13 @@ def analyze_full_markets(home, away, h_xg, a_xg, odds_h, odds_d, odds_a, commenc
     """Genera pronósticos extendidos para todos los mercados de un partido"""
     matrix = dixon_coles_prob(h_xg, a_xg, rho=rho)
     
-    # 1. Mercado 1X2 (Partido Completo)
+    # 1. Mercado 1X2
     p_h = float(np.sum(np.tril(matrix, -1)))
     p_d = float(np.sum(np.diag(matrix)))
     p_a = float(np.sum(np.triu(matrix, 1)))
     
-    # 2. Mercado 1X2 al Descanso (Aproximación con el 45% del xG)
+    # 2. Mercado 1X2 al Descanso (45% del xG)
     matrix_ht = dixon_coles_prob(h_xg * 0.45, a_xg * 0.45, rho=rho)
-    p_h_ht = float(np.sum(np.tril(matrix_ht, -1)))
-    p_d_ht = float(np.sum(np.diag(matrix_ht)))
-    p_a_ht = float(np.sum(np.triu(matrix_ht, 1)))
     
     # 3. Ambos Marcan (BTTS)
     p_btts_yes = float(np.sum(matrix[1:, 1:]))
@@ -63,20 +60,18 @@ def analyze_full_markets(home, away, h_xg, a_xg, odds_h, odds_d, odds_a, commenc
     p_over_0_5_ht = float(np.sum(matrix_ht[total_goals_matrix > 0.5]))
     p_over_1_5 = float(np.sum(matrix[total_goals_matrix > 1.5]))
     p_over_2_5 = float(np.sum(matrix[total_goals_matrix > 2.5]))
-    p_over_3_5 = float(np.sum(matrix[total_goals_matrix > 3.5]))
     p_under_2_5 = 1.0 - p_over_2_5
     
     # 5. Estimación de Córneres
     exp_corners = round((h_xg * 3.8) + (a_xg * 3.5) + 3.2, 1)
     p_corners_8_5 = min(0.95, round(0.50 + (exp_corners - 8.5) * 0.08, 2))
-    p_corners_10_5 = min(0.95, round(0.35 + (exp_corners - 10.5) * 0.08, 2))
     
-    # 6. Marcador Más Probable y Margen
+    # 6. Marcador Más Probable
     flat_idx = np.argmax(matrix)
     most_likely_score = np.unravel_index(flat_idx, matrix.shape)
     score_str = f"{most_likely_score[0]} - {most_likely_score[1]}"
     
-    # Formatear fecha y hora
+    # Formatear hora
     formatted_time = "Por definir"
     if commence_time:
         try:
@@ -88,41 +83,39 @@ def analyze_full_markets(home, away, h_xg, a_xg, odds_h, odds_d, odds_a, commenc
     # Compilar recomendaciones
     predictions = []
     
-    # Selección Principal (Ganador / Doble Oportunidad / Hándicap)
-    if p_h >= 0.60:
+    # 1X2 / Doble Oportunidad
+    if p_h >= 0.58:
         predictions.append(f"<b>Resultado:</b> Gana {home} ({p_h*100:.1f}%)")
-    elif p_a >= 0.60:
+    elif p_a >= 0.58:
         predictions.append(f"<b>Resultado:</b> Gana {away} ({p_a*100:.1f}%)")
-    elif p_h >= 0.42 and p_h > p_a:
+    elif p_h >= 0.40 and p_h > p_a:
         predictions.append(f"<b>Doble Oportunidad:</b> {home} o Empate (1X)")
-    elif p_a >= 0.42 and p_a > p_h:
+    elif p_a >= 0.40 and p_a > p_h:
         predictions.append(f"<b>Doble Oportunidad:</b> {away} o Empate (X2)")
     else:
-        predictions.append("<b>Resultado:</b> Partido Igualado / Empate Opcional")
+        predictions.append("<b>Resultado:</b> Partido Igualado")
         
-    # Selección de Goles
-    if p_over_2_5 >= 0.55:
+    # Total de Goles
+    if p_over_2_5 >= 0.50:
         predictions.append(f"<b>Total Goles:</b> Más de 2.5 Goles ({p_over_2_5*100:.1f}%)")
-    elif p_over_1_5 >= 0.75:
+    elif p_over_1_5 >= 0.70:
         predictions.append(f"<b>Total Goles:</b> Más de 1.5 Goles ({p_over_1_5*100:.1f}%)")
     else:
         predictions.append(f"<b>Total Goles:</b> Menos de 2.5 Goles ({p_under_2_5*100:.1f}%)")
         
-    # Mercado Descanso (1ª Parte)
-    if p_over_0_5_ht >= 0.70:
+    # 1ª Parte
+    if p_over_0_5_ht >= 0.65:
         predictions.append(f"<b>1ª Parte:</b> Más de 0.5 Goles HT ({p_over_0_5_ht*100:.1f}%)")
         
-    # Ambos Marcan
-    if p_btts_yes >= 0.55:
+    # Ambos Marcan (BTTS) — Calibrado a umbral realista (50%+)
+    if p_btts_yes >= 0.50 or (h_xg >= 1.15 and a_xg >= 1.15):
         predictions.append(f"<b>Ambos Marcan:</b> SÍ ({p_btts_yes*100:.1f}%)")
     else:
         predictions.append(f"<b>Ambos Marcan:</b> NO ({p_btts_no*100:.1f}%)")
         
-    # Córneres
-    predictions.append(f"<b>Córneres:</b> ~{exp_corners} (+8.5 Cantos: {p_corners_8_5*100:.0f}%)")
-    
-    # Marcador Probable
-    predictions.append(f"<b>Marcador Exacto Estimado:</b> {score_str}")
+    # Córneres y Marcador
+    predictions.append(f"<b>Córneres Est.:</b> ~{exp_corners} (+8.5: {p_corners_8_5*100:.0f}%)")
+    predictions.append(f"<b>Marcador Probable:</b> {score_str}")
     
     return {
         "Hora de Inicio": formatted_time,
@@ -143,9 +136,9 @@ away_team = st.sidebar.text_input("Equipo Visitante", "Manchester City")
 
 col_xg1, col_xg2 = st.sidebar.columns(2)
 with col_xg1:
-    home_xg = st.number_input("xG Local (90m)", min_value=0.1, max_value=5.0, value=1.0, step=0.1)
+    home_xg = st.number_input("xG Local (90m)", min_value=0.1, max_value=5.0, value=1.4, step=0.1)
 with col_xg2:
-    away_xg = st.number_input("xG Visitante (90m)", min_value=0.1, max_value=5.0, value=2.0, step=0.1)
+    away_xg = st.number_input("xG Visitante (90m)", min_value=0.1, max_value=5.0, value=1.3, step=0.1)
 
 rho = st.sidebar.slider("Factor de Correlación (Rho)", -0.30, 0.00, -0.13, 0.01)
 
@@ -158,9 +151,9 @@ with tab_single:
     st.subheader(f"Análisis Exhaustivo: {home_team} vs {away_team}")
     
     col1, col2, col3 = st.columns(3)
-    odds_h = col1.number_input("Cuota Local", value=5.25)
-    odds_d = col2.number_input("Cuota Empate", value=3.90)
-    odds_a = col3.number_input("Cuota Visitante", value=1.63)
+    odds_h = col1.number_input("Cuota Local", value=2.20)
+    odds_d = col2.number_input("Cuota Empate", value=3.30)
+    odds_a = col3.number_input("Cuota Visitante", value=3.10)
     
     res = analyze_full_markets(home_team, away_team, home_xg, away_xg, odds_h, odds_d, odds_a, rho=rho)
     
@@ -202,9 +195,13 @@ with tab_scanner:
                         o_a = next((x['price'] for x in outcomes if x['name'] == away_p), 1.0)
                         o_d = next((x['price'] for x in outcomes if x['name'] == 'Draw'), 1.0)
                         
-                        # Inferencia estocástica de xG según cuotas
-                        h_xg_est = round(max(0.6, 2.4 / (o_h if o_h > 0 else 1)), 2)
-                        a_xg_est = round(max(0.6, 2.4 / (o_a if o_a > 0 else 1)), 2)
+                        # Inferencia ajustada de xG según cuotas
+                        # Se calcula un xG base proporcional a la probabilidad implícita
+                        h_implied = 1.0 / o_h if o_h > 0 else 0.33
+                        a_implied = 1.0 / o_a if o_a > 0 else 0.33
+                        
+                        h_xg_est = round(max(0.8, h_implied * 2.7), 2)
+                        a_xg_est = round(max(0.8, a_implied * 2.7), 2)
                         
                         # Generar predicción extendida
                         match_info = analyze_full_markets(home_p, away_p, h_xg_est, a_xg_est, o_h, o_d, o_a, commence, rho)
