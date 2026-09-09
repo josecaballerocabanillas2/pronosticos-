@@ -5,11 +5,12 @@ import pandas as pd
 import requests
 from datetime import datetime
 import dateutil.parser
+import pytz
 
-st.set_page_config(page_title="Escáner Completo de Pronósticos con Horarios", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Escáner Máxima Certeza (Hora Portugal)", page_icon="⚽", layout="wide")
 
-st.title("⚽ Escáner de Pronósticos Extendido con Horarios")
-st.caption("Incluye horarios de inicio, Ambos Marcan, Resultado Final (1X2), Primer Tiempo (1T) y Segundo Tiempo (2T).")
+st.title("⚽ Escáner de Pronósticos Máxima Certeza")
+st.caption("Ordenado por las probabilidades más altas del mercado. Horarios ajustados a Portugal (Lisboa).")
 
 # ---------------------------------------------------------
 # MOTOR DE PROBABILIDADES
@@ -56,15 +57,19 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                 matches_data = res.json()
                 results = []
                 
+                # Zona horaria de Portugal
+                portugal_tz = pytz.timezone('Europe/Lisbon')
+                
                 for m in matches_data:
                     home_p = m.get('home_team', 'Local')
                     away_p = m.get('away_team', 'Visitante')
                     
-                    # Formatear Horario
+                    # Formatear Horario a Portugal
                     commence_time_raw = m.get('commence_time', '')
                     if commence_time_raw:
-                        dt = dateutil.parser.isoparse(commence_time_raw).astimezone()
-                        match_time = dt.strftime("%H:%M (%d/%m)")
+                        dt_utc = dateutil.parser.isoparse(commence_time_raw)
+                        dt_portugal = dt_utc.astimezone(portugal_tz)
+                        match_time = dt_portugal.strftime("%H:%M (%d/%m)")
                     else:
                         match_time = "Por definir"
 
@@ -83,40 +88,51 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                     h_xg_est = round(max(0.8, h_implied * 2.7), 2)
                     a_xg_est = round(max(0.8, a_implied * 2.7), 2)
                     
-                    # Matriz Partido Completo
+                    # Matrices
                     matrix = dixon_coles_prob(h_xg_est, a_xg_est)
-                    
-                    # Matriz 1ª Parte (~45% del xG total)
                     matrix_ht = dixon_coles_prob(h_xg_est * 0.45, a_xg_est * 0.45)
-                    
-                    # Matriz 2ª Parte (~55% del xG total)
                     matrix_2t = dixon_coles_prob(h_xg_est * 0.55, a_xg_est * 0.55)
                     
-                    # 1. Ganador Final (1X2)
+                    # 1. Ganador Final (1X2) y Doble Oportunidad
                     p_h = float(np.sum(np.tril(matrix, -1)))
                     p_d = float(np.sum(np.diag(matrix)))
                     p_a = float(np.sum(np.triu(matrix, 1)))
+                    p_1x = p_h + p_d
+                    p_x2 = p_a + p_d
                     
                     # 2. Ambos Marcan (BTTS)
                     p_btts_yes = float(np.sum(matrix[1:, 1:]))
                     p_btts_no = 1.0 - p_btts_yes
                     
-                    # 3. Primer Tiempo (1T)
+                    # 3. Totales de Goles
+                    total_goals_matrix = np.fromfunction(lambda i, j: i + j, matrix.shape)
+                    p_over_0_5 = float(np.sum(matrix[total_goals_matrix > 0.5]))
+                    p_over_1_5 = float(np.sum(matrix[total_goals_matrix > 1.5]))
+                    p_under_3_5 = float(np.sum(matrix[total_goals_matrix < 3.5]))
+                    p_under_4_5 = float(np.sum(matrix[total_goals_matrix < 4.5]))
+                    
+                    # 4. Primer Tiempo (1T)
                     p_h_ht = float(np.sum(np.tril(matrix_ht, -1)))
                     p_d_ht = float(np.sum(np.diag(matrix_ht)))
                     p_a_ht = float(np.sum(np.triu(matrix_ht, 1)))
                     
-                    # 4. Segundo Tiempo (2T)
+                    # 5. Segundo Tiempo (2T)
                     p_h_2t = float(np.sum(np.tril(matrix_2t, -1)))
                     p_d_2t = float(np.sum(np.diag(matrix_2t)))
                     p_a_2t = float(np.sum(np.triu(matrix_2t, 1)))
 
                     candidates = [
-                        ("Gana " + home_p + " (Partido Completo)", p_h, o_h),
-                        ("Empate (Partido Completo)", p_d, o_d),
-                        ("Gana " + away_p + " (Partido Completo)", p_a, o_a),
+                        ("Gana " + home_p + " (Final)", p_h, o_h),
+                        ("Empate (Final)", p_d, o_d),
+                        ("Gana " + away_p + " (Final)", p_a, o_a),
+                        ("1X (Doble Oportunidad Local/Empate)", p_1x, round(1/p_1x, 2) if p_1x > 0 else 1.0),
+                        ("X2 (Doble Oportunidad Visita/Empate)", p_x2, round(1/p_x2, 2) if p_x2 > 0 else 1.0),
                         ("Ambos Marcan: SÍ", p_btts_yes, round(1/p_btts_yes, 2) if p_btts_yes > 0 else 1.0),
                         ("Ambos Marcan: NO", p_btts_no, round(1/p_btts_no, 2) if p_btts_no > 0 else 1.0),
+                        ("Más de 0.5 Goles Totales", p_over_0_5, round(1/p_over_0_5, 2) if p_over_0_5 > 0 else 1.0),
+                        ("Más de 1.5 Goles Totales", p_over_1_5, round(1/p_over_1_5, 2) if p_over_1_5 > 0 else 1.0),
+                        ("Menos de 3.5 Goles Totales", p_under_3_5, round(1/p_under_3_5, 2) if p_under_3_5 > 0 else 1.0),
+                        ("Menos de 4.5 Goles Totales", p_under_4_5, round(1/p_under_4_5, 2) if p_under_4_5 > 0 else 1.0),
                         ("Gana " + home_p + " (1ª Parte)", p_h_ht, round(1/p_h_ht, 2) if p_h_ht > 0 else 1.0),
                         ("Empate (1ª Parte)", p_d_ht, round(1/p_d_ht, 2) if p_d_ht > 0 else 1.0),
                         ("Gana " + away_p + " (1ª Parte)", p_a_ht, round(1/p_a_ht, 2) if p_a_ht > 0 else 1.0),
@@ -125,22 +141,28 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                         ("Gana " + away_p + " (2ª Parte)", p_a_2t, round(1/p_a_2t, 2) if p_a_2t > 0 else 1.0),
                     ]
                     
-                    # Ordenar por probabilidad descendente
+                    # Ordenar selecciones de mayor a menor probabilidad
                     sorted_candidates = sorted(candidates, key=lambda x: x[1], reverse=True)
                     top_pick = sorted_candidates[0]
                     second_pick = sorted_candidates[1]
                     third_pick = sorted_candidates[2]
                     
                     results.append({
-                        "Horario": f"⏰ <b>{match_time}</b>",
+                        "Horario (Portugal)": f"🇵🇹 <b>{match_time}</b>",
                         "Partido": f"<b>{home_p} vs {away_p}</b>",
                         "Pronóstico #1 Máxima Certeza": f"🔥 <b>{top_pick[0]}</b><br>• Probabilidad: <b>{top_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{top_pick[2]:.2f}</b>",
                         "Pronóstico #2 Alternativa": f"🟢 <b>{second_pick[0]}</b><br>• Probabilidad: <b>{second_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{second_pick[2]:.2f}</b>",
-                        "Pronóstico #3 Opción": f"🔵 <b>{third_pick[0]}</b><br>• Probabilidad: <b>{third_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{third_pick[2]:.2f}</b>"
+                        "Pronóstico #3 Opción": f"🔵 <b>{third_pick[0]}</b><br>• Probabilidad: <b>{third_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{third_pick[2]:.2f}</b>",
+                        "max_prob": top_pick[1]
                     })
-                    
-                df = pd.DataFrame(results)
-                st.markdown("### 📊 Mejores Opciones por Partido")
+                
+                # Ordenar la lista completa de partidos: primero los de MAYOR certidumbre global
+                results_sorted = sorted(results, key=lambda x: x["max_prob"], reverse=True)
+                for item in results_sorted:
+                    del item["max_prob"]
+                
+                df = pd.DataFrame(results_sorted)
+                st.markdown("### 📊 Partidos Ordenados por los Índices de Acierto Más Altos")
                 st.write(df.to_html(escape=False), unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Error procesando datos: {e}")
