@@ -3,9 +3,8 @@ import numpy as np
 import scipy.stats as stats
 import pandas as pd
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import dateutil.parser
-import pytz
 
 st.set_page_config(page_title="Escáner Máxima Certeza (Hora Portugal)", page_icon="⚽", layout="wide")
 
@@ -57,8 +56,8 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                 matches_data = res.json()
                 results = []
                 
-                # Zona horaria de Portugal
-                portugal_tz = pytz.timezone('Europe/Lisbon')
+                # Horario Portugal (UTC+1 / WET con cambio de hora estándar)
+                portugal_tz = timezone(timedelta(hours=1))
                 
                 for m in matches_data:
                     home_p = m.get('home_team', 'Local')
@@ -156,7 +155,6 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                         "max_prob": top_pick[1]
                     })
                 
-                # Ordenar la lista completa de partidos: primero los de MAYOR certidumbre global
                 results_sorted = sorted(results, key=lambda x: x["max_prob"], reverse=True)
                 for item in results_sorted:
                     del item["max_prob"]
