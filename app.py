@@ -9,7 +9,7 @@ import dateutil.parser
 st.set_page_config(page_title="Escáner Máxima Certeza (Hora Portugal)", page_icon="⚽", layout="wide")
 
 st.title("⚽ Escáner de Pronósticos Máxima Certeza")
-st.caption("Ordenado por las probabilidades más altas del mercado. Horarios ajustados a Portugal (Lisboa).")
+st.caption("Con columnas dedicadas para Ambos Marcan, Córneres Estimados y Pronósticos Principales (Hora de Portugal).")
 
 # ---------------------------------------------------------
 # MOTOR DE PROBABILIDADES
@@ -110,12 +110,14 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                     p_under_3_5 = float(np.sum(matrix[total_goals_matrix < 3.5]))
                     p_under_4_5 = float(np.sum(matrix[total_goals_matrix < 4.5]))
                     
-                    # 4. Primer Tiempo (1T)
+                    # 4. Estimación de Córneres
+                    exp_corners = round((h_xg_est * 3.8) + (a_xg_est * 3.5) + 3.2, 1)
+                    
+                    # 5. Primer y Segundo Tiempo
                     p_h_ht = float(np.sum(np.tril(matrix_ht, -1)))
                     p_d_ht = float(np.sum(np.diag(matrix_ht)))
                     p_a_ht = float(np.sum(np.triu(matrix_ht, 1)))
                     
-                    # 5. Segundo Tiempo (2T)
                     p_h_2t = float(np.sum(np.tril(matrix_2t, -1)))
                     p_d_2t = float(np.sum(np.diag(matrix_2t)))
                     p_a_2t = float(np.sum(np.triu(matrix_2t, 1)))
@@ -126,8 +128,6 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                         ("Gana " + away_p + " (Final)", p_a, o_a),
                         ("1X (Doble Oportunidad Local/Empate)", p_1x, round(1/p_1x, 2) if p_1x > 0 else 1.0),
                         ("X2 (Doble Oportunidad Visita/Empate)", p_x2, round(1/p_x2, 2) if p_x2 > 0 else 1.0),
-                        ("Ambos Marcan: SÍ", p_btts_yes, round(1/p_btts_yes, 2) if p_btts_yes > 0 else 1.0),
-                        ("Ambos Marcan: NO", p_btts_no, round(1/p_btts_no, 2) if p_btts_no > 0 else 1.0),
                         ("Más de 0.5 Goles Totales", p_over_0_5, round(1/p_over_0_5, 2) if p_over_0_5 > 0 else 1.0),
                         ("Más de 1.5 Goles Totales", p_over_1_5, round(1/p_over_1_5, 2) if p_over_1_5 > 0 else 1.0),
                         ("Menos de 3.5 Goles Totales", p_under_3_5, round(1/p_under_3_5, 2) if p_under_3_5 > 0 else 1.0),
@@ -140,18 +140,24 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                         ("Gana " + away_p + " (2ª Parte)", p_a_2t, round(1/p_a_2t, 2) if p_a_2t > 0 else 1.0),
                     ]
                     
-                    # Ordenar selecciones de mayor a menor probabilidad
+                    # Ordenar selecciones por probabilidad
                     sorted_candidates = sorted(candidates, key=lambda x: x[1], reverse=True)
                     top_pick = sorted_candidates[0]
                     second_pick = sorted_candidates[1]
-                    third_pick = sorted_candidates[2]
+
+                    # Determinar favorito en Ambos Marcan
+                    if p_btts_yes >= p_btts_no:
+                        btts_text = f"<b>SÍ</b> ({p_btts_yes*100:.1f}%)"
+                    else:
+                        btts_text = f"<b>NO</b> ({p_btts_no*100:.1f}%)"
                     
                     results.append({
-                        "Horario (Portugal)": f"🇵🇹 <b>{match_time}</b>",
+                        "Horario (PT)": f"🇵🇹 <b>{match_time}</b>",
                         "Partido": f"<b>{home_p} vs {away_p}</b>",
+                        "Ambos Marcan": btts_text,
+                        "Córneres Est.": f"🚩 <b>{exp_corners}</b>",
                         "Pronóstico #1 Máxima Certeza": f"🔥 <b>{top_pick[0]}</b><br>• Probabilidad: <b>{top_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{top_pick[2]:.2f}</b>",
                         "Pronóstico #2 Alternativa": f"🟢 <b>{second_pick[0]}</b><br>• Probabilidad: <b>{second_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{second_pick[2]:.2f}</b>",
-                        "Pronóstico #3 Opción": f"🔵 <b>{third_pick[0]}</b><br>• Probabilidad: <b>{third_pick[1]*100:.1f}%</b><br>• Cuota Ref.: <b>{third_pick[2]:.2f}</b>",
                         "max_prob": top_pick[1]
                     })
                 
@@ -160,7 +166,7 @@ if st.button("🚀 Escanear y Mostrar Mejores Pronósticos"):
                     del item["max_prob"]
                 
                 df = pd.DataFrame(results_sorted)
-                st.markdown("### 📊 Partidos Ordenados por los Índices de Acierto Más Altos")
+                st.markdown("### 📊 Partidos Ordenados por Índice de Certeza Global")
                 st.write(df.to_html(escape=False), unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Error procesando datos: {e}")
