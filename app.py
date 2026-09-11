@@ -42,14 +42,12 @@ def dixon_coles_prob(home_xg, away_xg, rho=-0.13, max_g=8):
 def calculate_predictions(home_p, away_p, home_xg, away_xg, o_h, o_a, o_d, home_goals=0, away_goals=0):
     matrix = dixon_coles_prob(home_xg, away_xg)
     
-    # Matriz para restarle el tiempo consumido
     p_h = float(np.sum(np.tril(matrix, -1)))
     p_d = float(np.sum(np.diag(matrix)))
     p_a = float(np.sum(np.triu(matrix, 1)))
     p_1x = p_h + p_d
     p_x2 = p_a + p_d
     
-    # Evaluar si Ambos Marcan ya ocurrió en vivo o por probabilidad
     if home_goals > 0 and away_goals > 0:
         p_btts_yes = 1.0
         p_btts_no = 0.0
@@ -75,7 +73,7 @@ def calculate_predictions(home_p, away_p, home_xg, away_xg, o_h, o_a, o_d, home_
     return sorted_candidates[:3], p_btts_yes, p_btts_no
 
 # ---------------------------------------------------------
-# INTERFAZ STREAMLIT
+# INTERFAZ STREAMLIT CON MEMORIA DE SESIÓN
 # ---------------------------------------------------------
 api_key_odds = st.text_input("Ingresa tu API Key de The-Odds-API", type="password")
 
@@ -142,57 +140,62 @@ if st.button("🚀 Escanear y Cargar Analizador Completo"):
                         "o_h": o_h, "o_a": o_a, "o_d": o_d
                     })
                 
-                results_sorted = sorted(results_pre, key=lambda x: x["sort_time"])
-                
-                tab1, tab2 = st.tabs(["📊 Tabla Pre-Partido", "⏱️ Actualizador LIVE Manual"])
-                
-                with tab1:
-                    clean_results = []
-                    for item in results_sorted:
-                        row = item.copy()
-                        del row["sort_time"]; del row["home_p"]; del row["away_p"]; del row["pre_picks"]
-                        del row["h_xg"]; del row["a_xg"]; del row["o_h"]; del row["o_a"]; del row["o_d"]
-                        clean_results.append(row)
-                    
-                    df = pd.DataFrame(clean_results)
-                    st.markdown("### 📋 Partidos Ordenados Cronológicamente")
-                    st.write(df.to_html(escape=False), unsafe_allow_html=True)
-                
-                with tab2:
-                    st.markdown("### 🔄 Actualizador en Vivo por Marcador")
-                    minute = st.slider("Minuto del partido:", 1, 89, 15)
-                    
-                    for idx, match in enumerate(results_sorted):
-                        with st.expander(f"⚽ {match['home_p']} vs {match['away_p']}"):
-                            c1, c2 = st.columns(2)
-                            with c1:
-                                g_home = st.number_input(f"Goles {match['home_p']}", min_value=0, value=0, key=f"gh_{idx}")
-                            with c2:
-                                g_away = st.number_input(f"Goles {match['away_p']}", min_value=0, value=0, key=f"ga_{idx}")
-                            
-                            time_remaining_ratio = max(0.05, (90 - minute) / 90.0)
-                            live_h_xg = round(match["h_xg"] * time_remaining_ratio, 2)
-                            live_a_xg = round(match["a_xg"] * time_remaining_ratio, 2)
-                            
-                            live_picks, btts_y, btts_n = calculate_predictions(
-                                match["home_p"], match["away_p"], 
-                                live_h_xg, live_a_xg, match["o_h"], match["o_a"], match["o_d"],
-                                home_goals=g_home, away_goals=g_away
-                            )
-                            
-                            col_a, col_b = st.columns(2)
-                            with col_a:
-                                st.markdown("#### 📌 Pre-Partido (Base)")
-                                st.write(f"1️⃣ {match['pre_picks'][0][0]} ({match['pre_picks'][0][1]*100:.1f}%)")
-                                st.write(f"2️⃣ {match['pre_picks'][1][0]} ({match['pre_picks'][1][1]*100:.1f}%)")
-                                st.write(f"3️⃣ {match['pre_picks'][2][0]} ({match['pre_picks'][2][1]*100:.1f}%)")
-                            
-                            with col_b:
-                                st.markdown(f"#### ⚡ En Vivo (Minuto {minute}' | {g_home}-{g_away})")
-                                st.write(f"🔥 **1️⃣** {live_picks[0][0]} (**{live_picks[0][1]*100:.1f}%**)")
-                                st.write(f"🟢 **2️⃣** {live_picks[1][0]} (**{live_picks[1][1]*100:.1f}%**)")
-                                st.write(f"🔵 **3️⃣** {live_picks[2][0]} (**{live_picks[2][1]*100:.1f}%**)")
-                                st.caption(f"Ambos Marcan en vivo: **SÍ ({btts_y*100:.0f}%)** | **NO ({btts_n*100:.0f}%)**")
-
+                # Guardar datos persistentes en la sesión de Streamlit
+                st.session_state["results_sorted"] = sorted(results_pre, key=lambda x: x["sort_time"])
         except Exception as e:
             st.error(f"Error procesando datos: {e}")
+
+# ---------------------------------------------------------
+# RENDERIZADO DESDE MEMORIA (Evita reinicios al interactuar)
+# ---------------------------------------------------------
+if "results_sorted" in st.session_state:
+    results_sorted = st.session_state["results_sorted"]
+    tab1, tab2 = st.tabs(["📊 Tabla Pre-Partido", "⏱️ Actualizador LIVE Manual"])
+    
+    with tab1:
+        clean_results = []
+        for item in results_sorted:
+            row = item.copy()
+            del row["sort_time"]; del row["home_p"]; del row["away_p"]; del row["pre_picks"]
+            del row["h_xg"]; del row["a_xg"]; del row["o_h"]; del row["o_a"]; del row["o_d"]
+            clean_results.append(row)
+        
+        df = pd.DataFrame(clean_results)
+        st.markdown("### 📋 Partidos Ordenados Cronológicamente")
+        st.write(df.to_html(escape=False), unsafe_allow_html=True)
+    
+    with tab2:
+        st.markdown("### 🔄 Actualizador en Vivo por Marcador")
+        minute = st.slider("Minuto del partido:", 1, 89, 15)
+        
+        for idx, match in enumerate(results_sorted):
+            with st.expander(f"⚽ {match['home_p']} vs {match['away_p']}"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    g_home = st.number_input(f"Goles {match['home_p']}", min_value=0, value=0, key=f"gh_{idx}")
+                with c2:
+                    g_away = st.number_input(f"Goles {match['away_p']}", min_value=0, value=0, key=f"ga_{idx}")
+                
+                time_remaining_ratio = max(0.05, (90 - minute) / 90.0)
+                live_h_xg = round(match["h_xg"] * time_remaining_ratio, 2)
+                live_a_xg = round(match["a_xg"] * time_remaining_ratio, 2)
+                
+                live_picks, btts_y, btts_n = calculate_predictions(
+                    match["home_p"], match["away_p"], 
+                    live_h_xg, live_a_xg, match["o_h"], match["o_a"], match["o_d"],
+                    home_goals=g_home, away_goals=g_away
+                )
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.markdown("#### 📌 Pre-Partido (Base)")
+                    st.write(f"1️⃣ {match['pre_picks'][0][0]} ({match['pre_picks'][0][1]*100:.1f}%)")
+                    st.write(f"2️⃣ {match['pre_picks'][1][0]} ({match['pre_picks'][1][1]*100:.1f}%)")
+                    st.write(f"3️⃣ {match['pre_picks'][2][0]} ({match['pre_picks'][2][1]*100:.1f}%)")
+                
+                with col_b:
+                    st.markdown(f"#### ⚡ En Vivo (Minuto {minute}' | {g_home}-{g_away})")
+                    st.write(f"🔥 **1️⃣** {live_picks[0][0]} (**{live_picks[0][1]*100:.1f}%**)")
+                    st.write(f"🟢 **2️⃣** {live_picks[1][0]} (**{live_picks[1][1]*100:.1f}%**)")
+                    st.write(f"🔵 **3️⃣** {live_picks[2][0]} (**{live_picks[2][1]*100:.1f}%**)")
+                    st.caption(f"Ambos Marcan en vivo: **SÍ ({btts_y*100:.0f}%)** | **NO ({btts_n*100:.0f}%)**")
